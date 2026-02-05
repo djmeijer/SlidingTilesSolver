@@ -18,7 +18,6 @@ public class MultislideSolver
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static unsafe long[] Solve(PuzzleInfo info)
     {
-        if (!info.Multislide) throw new Exception("PuzzleInfo.Multislide should be set");
         var totalTime = Stopwatch.StartNew();
 
         GpuSolver.Initialize(info.Width, info.Height);
@@ -28,15 +27,15 @@ public class MultislideSolver
 
 
         using var frontierUpDn = new MultislideFrontier(info, 
-            "E:/PUZ/frontier.up.dn.1", "F:/PUZ/frontier.up.dn.2", "G:/PUZ/frontier.up.dn.3", "H:/PUZ/frontier.up.dn.4", "H:/PUZ/frontier.up.dn.5");
+            "D:/PUZ/frontier.up.dn.1", "D:/PUZ/frontier.up.dn.2", "D:/PUZ/frontier.up.dn.3", "D:/PUZ/frontier.up.dn.4", "D:/PUZ/frontier.up.dn.5");
         using var frontierLtRt = new MultislideFrontier(info, 
-            "F:/PUZ/frontier.lt.rt.1", "G:/PUZ/frontier.lt.rt.2", "H:/PUZ/frontier.lt.rt.3", "H:/PUZ/frontier.lt.rt.4", "E:/PUZ/frontier.lt.rt.5");
+            "D:/PUZ/frontier.lt.rt.1", "D:/PUZ/frontier.lt.rt.2", "D:/PUZ/frontier.lt.rt.3", "D:/PUZ/frontier.lt.rt.4", "D:/PUZ/frontier.lt.rt.5");
         using var newFrontierUpDn = new MultislideFrontier(info, 
-            "G:/PUZ/frontier.new.up.dn.1", "H:/PUZ/frontier.new.up.dn.2", "H:/PUZ/frontier.new.up.dn.3", "E:/PUZ/frontier.new.up.dn.4", "F:/PUZ/frontier.new.up.dn.5");
+            "D:/PUZ/frontier.new.up.dn.1", "D:/PUZ/frontier.new.up.dn.2", "D:/PUZ/frontier.new.up.dn.3", "D:/PUZ/frontier.new.up.dn.4", "D:/PUZ/frontier.new.up.dn.5");
         using var newFrontierLtRt = new MultislideFrontier(info, 
-            "H:/PUZ/frontier.new.lt.rt.1", "H:/PUZ/frontier.new.lt.rt.2", "E:/PUZ/frontier.new.lt.rt.3", "F:/PUZ/frontier.new.lt.rt.4", "G:/PUZ/frontier.new.lt.rt.5");
+            "D:/PUZ/frontier.new.lt.rt.1", "D:/PUZ/frontier.new.lt.rt.2", "D:/PUZ/frontier.new.lt.rt.3", "D:/PUZ/frontier.new.lt.rt.4", "D:/PUZ/frontier.new.lt.rt.5");
         using var semiFrontier = new SegmentedFile(info.SegmentsCount, 
-            "H:/PUZ/semifrontier.1", "E:/PUZ/semifrontier.2", "F:/PUZ/semifrontier.3", "G:/PUZ/semifrontier.4", "H:/PUZ/semifrontier.5");
+            "D:/PUZ/semifrontier.1", "D:/PUZ/semifrontier.2", "D:/PUZ/semifrontier.3", "D:/PUZ/semifrontier.4", "D:/PUZ/semifrontier.5");
 
         /*
         using var frontierUpDn = new MultislideFrontier(info, "c:/PUZ/frontier.up.dn", "d:/PUZ/frontier.up.dn");
@@ -61,14 +60,18 @@ public class MultislideSolver
             valsBuffersList2.Add(new uint[PuzzleInfo.FRONTIER_BUFFER_SIZE]);
             tempBuffersList.Add(new byte[PuzzleInfo.FRONTIER_BUFFER_SIZE * 4]);
             tempBuffersList2.Add(new byte[PuzzleInfo.FRONTIER_BUFFER_SIZE * 4]);
-            frontierCollectorsListUpDn.Add(new MultislideFrontierCollector(newFrontierUpDn, tempBuffersList[i], valsBuffersList[i]));
-            frontierCollectorsListLtRt.Add(new MultislideFrontierCollector(newFrontierLtRt, tempBuffersList2[i], valsBuffersList2[i]));
+            frontierCollectorsListUpDn.Add(new MultislideFrontierCollector(newFrontierUpDn, info, tempBuffersList[i], valsBuffersList[i]));
+            frontierCollectorsListLtRt.Add(new MultislideFrontierCollector(newFrontierLtRt, info, tempBuffersList2[i], valsBuffersList2[i]));
         }
 
         // Fill initial state
         valsBuffersList[0][0] = (uint)info.InitialIndex;
         frontierUpDn.Write(0, tempBuffersList[0], valsBuffersList[0], 1);
         frontierLtRt.Write(0, tempBuffersList[0], valsBuffersList[0], 1);
+        using var csvWriter = PuzzleInfo.WRITE_BFS_CSV
+            ? new BfsCsvWriter(info)
+            : null;
+        csvWriter?.WriteIndex(info.InitialIndex, 0);
 
         TimeSpan TimerFillSemifrontier = TimeSpan.Zero;
         TimeSpan TimerFillFrontier = TimeSpan.Zero;
@@ -99,6 +102,16 @@ public class MultislideSolver
             upDownCollectors[i] = coll;
         }
 
+        static int[] MergeActiveSegments(params int[][] lists)
+        {
+            var set = new HashSet<int>();
+            foreach (var list in lists)
+            {
+                for (int i = 0; i < list.Length; i++) set.Add(list[i]);
+            }
+            return set.ToArray();
+        }
+
         for (int step = 1; step <= info.MaxSteps; step++)
         {
             sw.Restart();
@@ -107,6 +120,11 @@ public class MultislideSolver
             // Fill semi-frontier
             {
                 var tasks = new List<Task>();
+                var activeSegments = frontierUpDn.ActiveSegments();
+                if (PuzzleInfo.LOG_ACTIVE_SEGMENTS)
+                {
+                    Console.WriteLine($"Active segments (frontierUpDn) = {activeSegments.Length}");
+                }
                 int segmentIndex = 0;
                 for (int i = 0; i < upDownCollectors.Length; i++)
                 {
@@ -116,12 +134,9 @@ public class MultislideSolver
                         var collector = upDownCollectors[index];
                         while(true)
                         {
-                            int s = -1;
-                            lock (info)
-                            {
-                                s = segmentIndex++;
-                            }
-                            if (s >= info.SegmentsCount) break;
+                            int sIndex = Interlocked.Increment(ref segmentIndex) - 1;
+                            if (sIndex >= activeSegments.Length) break;
+                            int s = activeSegments[sIndex];
                             for (int p = 0; p < frontierUpDn.SegmentParts(s); p++)
                             {
                                 int len = frontierUpDn.Read(s, p, tempBuffersList[index], valsBuffersList[index]);
@@ -148,6 +163,14 @@ public class MultislideSolver
             long count = 0;
             {
                 var tasks = new List<Task>();
+                var activeSegments = MergeActiveSegments(
+                    semiFrontier.GetActiveSegments(),
+                    frontierUpDn.ActiveSegments(),
+                    frontierLtRt.ActiveSegments());
+                if (PuzzleInfo.LOG_ACTIVE_SEGMENTS)
+                {
+                    Console.WriteLine($"Active segments (merge) = {activeSegments.Length}");
+                }
                 int segmentIndex = 0;
                 for (int i = 0; i < statesList.Count; i++)
                 {
@@ -160,9 +183,9 @@ public class MultislideSolver
                         state.Reset();
                         while (true)
                         {
-                            int s = -1;
-                            lock (info) s = segmentIndex++;
-                            if (s >= info.SegmentsCount) break;
+                            int sIndex = Interlocked.Increment(ref segmentIndex) - 1;
+                            if (sIndex >= activeSegments.Length) break;
+                            int s = activeSegments[sIndex];
 
                             // add up/down
                             for (int p = 0; p < semiFrontier.SegmentParts(s); p++)
@@ -200,11 +223,12 @@ public class MultislideSolver
 
                             frontierCollectorUpDn.Segment = s;
                             frontierCollectorLtRt.Segment = s;
+                            frontierCollectorUpDn.Depth = step;
+                            frontierCollectorLtRt.Depth = step;
+                            frontierCollectorUpDn.CsvWriter = csvWriter;
+                            frontierCollectorLtRt.CsvWriter = csvWriter;
                             var localCount = state.Collect(frontierCollectorUpDn, frontierCollectorLtRt);
-                            lock (info)
-                            {
-                                count += localCount;
-                            }
+                            Interlocked.Add(ref count, localCount);
                         }
                     }, i);
                     tasks.Add(task);

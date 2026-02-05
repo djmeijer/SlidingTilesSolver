@@ -13,9 +13,11 @@ class Program
         PuzzleSolver.Solve(info);
         */
 
-        PuzzleInfo.THREADS = 6;
-        var info = new PuzzleInfo(4, 4, 0, true);
-        MultislideSolver.Solve(info);
+        var cpuThreads = 14;
+        PuzzleInfo.THREADS = cpuThreads;
+        PuzzleInfo.WRITE_BFS_CSV = true;
+        var info = new PuzzleInfo(4, 4, 15, false);
+        PuzzleSolver.Solve(info);
 
     }
 }

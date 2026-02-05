@@ -29,6 +29,8 @@ public unsafe class SegmentedFile : IDisposable
     private string[] FileNames;
     private FileStream[] Streams;
     private readonly Segment[] Segments;
+    private readonly HashSet<int> ActiveSegments = new HashSet<int>();
+    private readonly object ActiveLock = new object();
 
     public SegmentedFile(string fileName, int segmentsCount) : this(segmentsCount, new string[] { fileName }) { }
 
@@ -50,6 +52,10 @@ public unsafe class SegmentedFile : IDisposable
         for (int i = 0; i < Segments.Length; i++)
         {
             Segments[i].Parts.Clear();
+        }
+        lock (ActiveLock)
+        {
+            ActiveSegments.Clear();
         }
         if (DELETE_ON_CLEAR)
         {
@@ -103,11 +109,26 @@ public unsafe class SegmentedFile : IDisposable
             WriteTime += timer.Elapsed;
         }
         Segments[segment].Parts.Add(part);
+        if (Segments[segment].Parts.Count == 1)
+        {
+            lock (ActiveLock)
+            {
+                ActiveSegments.Add(segment);
+            }
+        }
     }
 
     public int SegmentParts(int segment)
     {
         return Segments[segment].Parts.Count;
+    }
+
+    public int[] GetActiveSegments()
+    {
+        lock (ActiveLock)
+        {
+            return ActiveSegments.ToArray();
+        }
     }
 
     public unsafe int ReadSegment(int segment, int part, uint[] buffer)

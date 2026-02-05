@@ -304,6 +304,17 @@ public unsafe class GpuSolver
     public static void CalcGPU_Up(int count, long* indexes)
     {
         if (count == 0) return;
+        if (count < PuzzleInfo.GPU_MIN_BATCH)
+        {
+            var swCpu = Stopwatch.StartNew();
+            for (int i = 0; i < count; i++)
+            {
+                indexes[i] = VerticalMoveUp(ref pparams, indexes[i]);
+            }
+            GpuExecTime += swCpu.Elapsed;
+            ProcessedValues += count;
+            return;
+        }
         lock(context)
         {
             ProcessedValues += count;
@@ -327,6 +338,17 @@ public unsafe class GpuSolver
     public static void CalcGPU_Down(int count, long* indexes)
     {
         if (count == 0) return;
+        if (count < PuzzleInfo.GPU_MIN_BATCH)
+        {
+            var swCpu = Stopwatch.StartNew();
+            for (int i = 0; i < count; i++)
+            {
+                indexes[i] = VerticalMoveDown(ref pparams, indexes[i]);
+            }
+            GpuExecTime += swCpu.Elapsed;
+            ProcessedValues += count;
+            return;
+        }
         lock (context)
         {
             ProcessedValues += count;
@@ -342,6 +364,13 @@ public unsafe class GpuSolver
     public static void CalcGPU_Multimove(int count, long* indexes, int row)
     {
         if (count == 0) return;
+        if (count < PuzzleInfo.GPU_MIN_BATCH)
+        {
+            var swCpu = Stopwatch.StartNew();
+            CalcCPU_Multimove(count, indexes, row);
+            GpuExecTime += swCpu.Elapsed;
+            return;
+        }
         lock (context)
         {
             var sw = Stopwatch.StartNew();
@@ -353,4 +382,52 @@ public unsafe class GpuSolver
         }
     }
 
+    private static void CalcCPU_Multimove(int count, long* indexes, int row)
+    {
+        byte[] arr1 = new byte[16];
+        byte[] arr2 = new byte[16];
+        byte[] arr3 = new byte[16];
+
+        for (int idx = 0; idx < count; idx++)
+        {
+            long value = indexes[idx];
+            FromIndex(ref pparams, value, arr1);
+            Unpack(ref pparams, arr1);
+            Copy(arr1, arr2);
+
+            int pos = idx;
+
+            for (int i = row + 1; i < pparams.Height; i++)
+            {
+                if (!CanRotateDn(ref pparams, arr1))
+                {
+                    indexes[pos] = -1;
+                }
+                else
+                {
+                    RotateDn(ref pparams, arr1);
+                    Copy(arr1, arr3);
+                    Pack(ref pparams, arr3);
+                    indexes[pos] = GetIndex(ref pparams, arr3);
+                }
+                pos += count;
+            }
+
+            for (int i = 0; i < row; i++)
+            {
+                if (!CanRotateUp(ref pparams, arr2))
+                {
+                    indexes[pos] = -1;
+                }
+                else
+                {
+                    RotateUp(ref pparams, arr2);
+                    Copy(arr2, arr3);
+                    Pack(ref pparams, arr3);
+                    indexes[pos] = GetIndex(ref pparams, arr3);
+                }
+                pos += count;
+            }
+        }
+    }
 }

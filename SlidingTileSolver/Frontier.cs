@@ -28,6 +28,8 @@ public class Frontier : IDisposable
 
     public int SegmentParts(int segment) => File.SegmentParts(segment);
 
+    public int[] ActiveSegments() => File.GetActiveSegments();
+
     public void Clear()
     {
         File.Clear();

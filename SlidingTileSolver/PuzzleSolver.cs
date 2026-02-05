@@ -27,10 +27,10 @@ public class PuzzleSolver
         var results = new List<long>();
 
         
-        using var frontier = new Frontier(info, "E:/PUZ/frontier.1.1", "F:/PUZ/frontier.1.2", "G:/PUZ/frontier.1.3", "H:/PUZ/frontier.1.4", "H:/PUZ/frontier.1.5");
-        using var newFrontier = new Frontier(info, "G:/PUZ/frontier.2.1", "G:/PUZ/frontier.2.2", "H:/PUZ/frontier.2.3", "E:/PUZ/frontier.2.4", "F:/PUZ/frontier.2.5");
-        using var semiFrontierUp = new SegmentedFile(info.SegmentsCount, "H:/PUZ/semifrontier.up.1", "H:/PUZ/semifrontier.up.2", "E:/PUZ/semifrontier.up.3", "F:/PUZ/semifrontier.up.4", "G:/PUZ/semifrontier.up.5");
-        using var semiFrontierDown = new SegmentedFile(info.SegmentsCount, "F:/PUZ/semifrontier.dn.1", "E:/PUZ/semifrontier.dn.2", "H:/PUZ/semifrontier.dn.3", "G:/PUZ/semifrontier.dn.4", "H:/PUZ/semifrontier.dn.5");
+        using var frontier = new Frontier(info, "D:/PUZ/frontier.1.1", "D:/PUZ/frontier.1.2", "D:/PUZ/frontier.1.3", "D:/PUZ/frontier.1.4", "D:/PUZ/frontier.1.5");
+        using var newFrontier = new Frontier(info, "D:/PUZ/frontier.2.1", "D:/PUZ/frontier.2.2", "D:/PUZ/frontier.2.3", "D:/PUZ/frontier.2.4", "D:/PUZ/frontier.2.5");
+        using var semiFrontierUp = new SegmentedFile(info.SegmentsCount, "D:/PUZ/semifrontier.up.1", "D:/PUZ/semifrontier.up.2", "D:/PUZ/semifrontier.up.3", "D:/PUZ/semifrontier.up.4", "D:/PUZ/semifrontier.up.5");
+        using var semiFrontierDown = new SegmentedFile(info.SegmentsCount, "D:/PUZ/semifrontier.dn.1", "D:/PUZ/semifrontier.dn.2", "D:/PUZ/semifrontier.dn.3", "D:/PUZ/semifrontier.dn.4", "D:/PUZ/semifrontier.dn.5");
         
         /*
         using var frontier = new Frontier(info, "c:/PUZ/frontier.1");
@@ -57,13 +57,17 @@ public class PuzzleSolver
             tempBuffersList.Add(new byte[PuzzleInfo.FRONTIER_BUFFER_SIZE * 4]);
             tempBuffersList2.Add(new byte[PuzzleInfo.FRONTIER_BUFFER_SIZE * 4]);
             tempBuffersList3.Add(new byte[PuzzleInfo.FRONTIER_BUFFER_SIZE * 4]);
-            frontierCollectorsList.Add(new FrontierCollector(newFrontier, tempBuffersList[i], valsBuffersList[i], statesBuffersList[i]));
+            frontierCollectorsList.Add(new FrontierCollector(newFrontier, info, tempBuffersList[i], valsBuffersList[i], statesBuffersList[i]));
         }
 
         // Fill initial state
         valsBuffersList[0][0] = (uint)info.InitialIndex;
         statesBuffersList[0][0] = info.GetState(info.InitialIndex);
         frontier.Write(0, tempBuffersList[0], valsBuffersList[0], statesBuffersList[0], 1);
+        using var csvWriter = PuzzleInfo.WRITE_BFS_CSV
+            ? new BfsCsvWriter(info)
+            : null;
+        csvWriter?.WriteIndex(info.InitialIndex, 0);
 
         TimeSpan TimerFillSemifrontier = TimeSpan.Zero;
         TimeSpan TimerFillFrontier = TimeSpan.Zero;
@@ -93,6 +97,16 @@ public class PuzzleSolver
             upDownCollectors[i] = coll;
         }
 
+        static int[] MergeActiveSegments(params int[][] lists)
+        {
+            var set = new HashSet<int>();
+            foreach (var list in lists)
+            {
+                for (int i = 0; i < list.Length; i++) set.Add(list[i]);
+            }
+            return set.ToArray();
+        }
+
         for (int step = 1; step <= info.MaxSteps; step++)
         {
             sw.Restart();
@@ -101,6 +115,11 @@ public class PuzzleSolver
             // Fill semi-frontier
             {
                 var tasks = new List<Task>();
+                var activeSegments = frontier.ActiveSegments();
+                if (PuzzleInfo.LOG_ACTIVE_SEGMENTS)
+                {
+                    Console.WriteLine($"Active segments (frontier) = {activeSegments.Length}");
+                }
                 int segmentIndex = 0;
                 for (int i = 0; i < upDownCollectors.Length; i++)
                 {
@@ -110,12 +129,9 @@ public class PuzzleSolver
                         var collector = upDownCollectors[index];
                         while(true)
                         {
-                            int s = -1;
-                            lock (info)
-                            {
-                                s = segmentIndex++;
-                            }
-                            if (s >= info.SegmentsCount) break;
+                            int sIndex = Interlocked.Increment(ref segmentIndex) - 1;
+                            if (sIndex >= activeSegments.Length) break;
+                            int s = activeSegments[sIndex];
                             for (int p = 0; p < frontier.SegmentParts(s); p++)
                             {
                                 int len = frontier.Read(s, p, tempBuffersList[index], valsBuffersList[index], statesBuffersList[index]);
@@ -136,6 +152,14 @@ public class PuzzleSolver
             long count = 0;
             {
                 var tasks = new List<Task>();
+                var activeSegments = MergeActiveSegments(
+                    frontier.ActiveSegments(),
+                    semiFrontierUp.GetActiveSegments(),
+                    semiFrontierDown.GetActiveSegments());
+                if (PuzzleInfo.LOG_ACTIVE_SEGMENTS)
+                {
+                    Console.WriteLine($"Active segments (merge) = {activeSegments.Length}");
+                }
                 int segmentIndex = 0;
                 for (int i = 0; i < statesList.Count; i++)
                 {
@@ -147,12 +171,9 @@ public class PuzzleSolver
                         state.Reset();
                         while (true)
                         {
-                            int s = -1;
-                            lock (info)
-                            {
-                                s = segmentIndex++;
-                            }
-                            if (s >= info.SegmentsCount) break;
+                            int sIndex = Interlocked.Increment(ref segmentIndex) - 1;
+                            if (sIndex >= activeSegments.Length) break;
+                            int s = activeSegments[sIndex];
 
                             // up
                             var t1 = Task.Factory.StartNew(() => {
@@ -214,11 +235,10 @@ public class PuzzleSolver
                             Task.WaitAll(new Task[] { t1, t2, t3 });
 
                             frontierCollector.Segment = s;
+                            frontierCollector.Depth = step;
+                            frontierCollector.CsvWriter = csvWriter;
                             var localCount = state.Collect(frontierCollector);
-                            lock (info)
-                            {
-                                count += localCount;
-                            }
+                            Interlocked.Add(ref count, localCount);
                         }
                     }, i);
                     tasks.Add(task);

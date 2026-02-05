@@ -8,15 +8,19 @@ using System.Threading.Tasks;
 public class FrontierCollector
 {
     public readonly Frontier Frontier;
+    public readonly PuzzleInfo Info;
+    public BfsCsvWriter CsvWriter { get; set; }
+    public int Depth { get; set; }
     public int Segment { get; set; } = -1;
     private readonly byte[] TempBuffer;
     private readonly uint[] Vals;
     private readonly byte[] States;
     private int BufferPosition;
 
-    public FrontierCollector(Frontier frontier, byte[] tempBuffer, uint[] vals, byte[] states)
+    public FrontierCollector(Frontier frontier, PuzzleInfo info, byte[] tempBuffer, uint[] vals, byte[] states)
     {
         Frontier = frontier;
+        Info = info;
         TempBuffer = tempBuffer;
         Vals = vals;
         States = states;
@@ -38,6 +42,10 @@ public class FrontierCollector
 
     private void Flush()
     {
+        if (CsvWriter != null && BufferPosition > 0)
+        {
+            CsvWriter.WriteBatch(Segment, Vals, BufferPosition, Depth);
+        }
         Frontier.Write(Segment, TempBuffer, Vals, States, BufferPosition);
         BufferPosition = 0;
     }

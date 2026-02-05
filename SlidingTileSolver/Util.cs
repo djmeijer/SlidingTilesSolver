@@ -19,7 +19,13 @@ public class Util
 
     public static FileStream OpenFile(string path)
     {
-        return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
+        return new FileStream(
+            path,
+            FileMode.OpenOrCreate,
+            FileAccess.ReadWrite,
+            FileShare.Read,
+            1 << 20,
+            FileOptions.SequentialScan);
     }
 
     public static void Swap<T>(ref T x, ref T y)

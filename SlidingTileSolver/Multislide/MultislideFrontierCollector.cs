@@ -8,14 +8,18 @@ using System.Threading.Tasks;
 public class MultislideFrontierCollector
 {
     public readonly MultislideFrontier Frontier;
+    public readonly PuzzleInfo Info;
+    public BfsCsvWriter CsvWriter { get; set; }
+    public int Depth { get; set; }
     public int Segment { get; set; } = -1;
     private readonly byte[] TempBuffer;
     private readonly uint[] Vals;
     private int BufferPosition;
 
-    public MultislideFrontierCollector(MultislideFrontier frontier, byte[] tempBuffer, uint[] vals)
+    public MultislideFrontierCollector(MultislideFrontier frontier, PuzzleInfo info, byte[] tempBuffer, uint[] vals)
     {
         Frontier = frontier;
+        Info = info;
         TempBuffer = tempBuffer;
         Vals = vals;
         BufferPosition = 0;
@@ -33,6 +37,10 @@ public class MultislideFrontierCollector
 
     private void Flush()
     {
+        if (CsvWriter != null && BufferPosition > 0)
+        {
+            CsvWriter.WriteBatch(Segment, Vals, BufferPosition, Depth);
+        }
         Frontier.Write(Segment, TempBuffer, Vals, BufferPosition);
         BufferPosition = 0;
     }

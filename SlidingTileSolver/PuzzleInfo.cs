@@ -11,6 +11,11 @@ public class PuzzleInfo
     public static bool SEMIFRONTIER_DIFF_ENCODING = true;
     public static int THREADS = 4;
     public const int FRONTIER_BUFFER_SIZE = 4 * 1024 * 1024;
+    public static bool WRITE_BFS_CSV = false;
+    public static string BFS_CSV_DIR = "D:\\PUZ\\results\\bfs_csv";
+    public const long BFS_CSV_ROWS_PER_FILE = 200_000_000;
+    public static bool LOG_ACTIVE_SEGMENTS = false;
+    public static int GPU_MIN_BATCH = 100_000;
 
     // 18 is 1MB = 256K uint's
     public static int SEMIFRONTIER_BUFFER_POW { get; private set; } = 18;
